@@ -1,0 +1,1897 @@
+-- ============================================
+-- Tomato Hub - モバイル専用 開閉式GUI
+-- ロガー削除・全機能有効化・名前変更済み
+-- ============================================
+
+-- ============================================
+-- UIライブラリの読み込み
+-- ============================================
+local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/Shwunk/Orion/main/source')))()
+
+-- ============================================
+-- サービスの取得
+-- ============================================
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
+local Lighting = game:GetService("Lighting")
+local GuiService = game:GetService("GuiService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = Workspace.CurrentCamera
+
+-- モバイル判定
+local isMobile = GuiService:IsTenFootInterface() or 
+                 (UserInputService.TouchEnabled and not UserInputService.MouseEnabled)
+
+-- ============================================
+-- リモートイベント・フォルダの参照
+-- ============================================
+local characterEventsFolder = ReplicatedStorage:WaitForChild("CharacterEvents")
+local ragdollRemoteEvent = characterEventsFolder:WaitForChild("RagdollRemote")
+local struggleEvent = characterEventsFolder:WaitForChild("Struggle")
+
+local grabEventsFolder = ReplicatedStorage:WaitForChild("GrabEvents")
+local setNetworkOwnerEvent = grabEventsFolder:WaitForChild("SetNetworkOwner")
+local destroyGrabLineEvent = grabEventsFolder:WaitForChild("DestroyGrabLine")
+
+local menuToysFolder = ReplicatedStorage:WaitForChild("MenuToys")
+local SpawnToyRF = menuToysFolder:WaitForChild("SpawnToyRemoteFunction")
+local DeleteToyRE = menuToysFolder:WaitForChild("DestroyToy")
+
+local playerEventsFolder = ReplicatedStorage:WaitForChild("PlayerEvents")
+local StickyPartEvent = playerEventsFolder:WaitForChild("StickyPartEvent")
+
+local isHeldValue = LocalPlayer:WaitForChild("IsHeld")
+
+local playerScriptsFolder = LocalPlayer:WaitForChild("PlayerScripts")
+local anticreatelinelocalscript = playerScriptsFolder:WaitForChild("CharacterAndBeamMove")
+
+local spawnedInToysFolder = Workspace:WaitForChild(LocalPlayer.Name .. "SpawnedInToys")
+
+-- アンチバーン用消火パーツ
+local apagarfogo = nil
+pcall(function()
+    apagarfogo = Workspace.Map.Hole.PoisonBigHole:WaitForChild("ExtinguishPart")
+    apagarfogo.Size = Vector3.new(0.5, 0.5, 0.5)
+    apagarfogo.Transparency = 1
+    if apagarfogo:FindFirstChild("Tex") then
+        apagarfogo.Tex.Transparency = 1
+    end
+end)
+
+-- Blitz用追加イベント
+local GrabEvents = ReplicatedStorage:WaitForChild("GrabEvents")
+local SetNetworkOwner = GrabEvents:WaitForChild("SetNetworkOwner")
+local CreateGrabLine = GrabEvents:WaitForChild("CreateGrabLine")
+local ExtendGrabLine = GrabEvents:WaitForChild("ExtendGrabLine")
+local updateLineColorsEvent = ReplicatedStorage:WaitForChild("DataEvents"):WaitForChild("UpdateLineColorsEvent")
+
+-- トレインコントロール用
+local PM = playerScriptsFolder:WaitForChild("PlayerModule")
+local CM = require(PM:WaitForChild("ControlModule"))
+
+-- ============================================
+-- グローバル設定テーブル（全機能ON）
+-- ============================================
+local Settings = {
+    Grab = {
+        strength = 5000,
+        EnableThrowStrength = true,
+        VoidGrab = true,
+        DeathGrab = true,
+        KickGrab = true,
+        NoclipGrab = true,
+    },
+    Player = {
+        Walkspeed = true,
+        WalkspeedValue = 50,
+        InfiniteJump = true,
+        InfiniteJumpPower = 50,
+    },
+    Anti = {
+        AntiGrab = true,
+        AntiBurn = true,
+        AntiExplosion = true,
+        AntiVoid = true,
+        AntiLag = true,
+        AntiKick = true,
+        AntiKickKunai = true,
+        AntiSticky = true,
+        AntiPaint = true,
+        AntiGucciBlobman = true,
+        AntiGucciTrain = true,
+        AntiRagdoll = true,
+        AntiBanana = true,
+    },
+    BlobmanBeta = {
+        ignoreFriends = false,
+        kickAuraActive = true,
+        KickDelay = 0.18,
+        FloatAmount = 16,
+        ignoreHeights = {526.377685546875, 5.2832231521606445},
+        currentSide = "Left",
+        isExecuting = false,
+        auraKickedPlayers = {},
+        selectedTarget = nil,
+    },
+    PvP = {
+        SilentAimEnabled = true,
+        AimStrength = 100,
+        AutoGrabEnabled = true,
+    },
+    Loop = {
+        KillAll = false,
+        BringAll = false,
+        TP_Priority = 0,
+        TeleportHeight = -3,
+        TargetPlayers = {},
+        OriginalPosition = nil,
+        LastTeleportTime = 0,
+        TeleportCooldown = 0.3,
+        ProcessedPlayers = {},
+        WhitelistFriends = false,
+        LastTargetKillTime = 0,
+        killAllLoop = nil,
+        targetKillLoop = nil,
+        killAllEnabled = false,
+        targetKillEnabled = false,
+        floatConnection = nil,
+    },
+    Visuals = {
+        ESPEnabled = true,
+        ESPFillColor = Color3.fromRGB(255, 0, 0),
+        ESPOutlineColor = Color3.fromRGB(255, 255, 255),
+        ESPFillTransparency = 0.5,
+        ESPOutlineTransparency = 0,
+        ShowHitbox = true,
+        HitboxColor = Color3.fromRGB(0, 100, 255),
+        ShowPlayerInfo = true,
+        CameraFOV = 90,
+        SpectatePlayer = nil,
+    },
+    Aura = {
+        VoidAura = true,
+        RagdollAura = true,
+        DeathAura = true,
+        FireAura = true,
+        AuraRadius = 32,
+        IgnoreFriendAura = false,
+    },
+    Line = {
+        ultragrabbb = true,
+        LineColorChangeValue = Color3.fromRGB(255, 0, 0),
+        CrazyLine = true,
+        InvisibleLine = true,
+        RainbowLine = true,
+        FlashingLine = true,
+        GradientLine = true,
+        LineSpeed = 2,
+        StrobeSpeed = 0.3,
+        PulseEffect = true,
+        IncreaseLineExtend = 5,
+        Lag_Intensity = 300,
+        LagServerActive = true,
+    },
+    ToyMod = {
+        UsePlotItems = true,
+        XSpacing = 0.1,
+        YOffset = 0,
+        ZOffset = 0,
+        AngleH = 90,
+        AngleV = 0,
+        FlapEnabled = true,
+        FlapSpeed = 3,
+        FlapRange = 50,
+        FlapType = 1,
+        SpeedLinkFlap = true
+    },
+    TrainControl = {
+        Enabled = true,
+        FlySpeed = 30,
+        NoClip = true,
+        ToyName = "FoodHamburger",
+        Interval = 0.01,
+        HeadOffset = Vector3.new(0, 3, 0),
+        SpawnTimeout = 0.1,
+        SPEED_MULT = 25,
+        BV_P = 25000,
+        BG_P = 6000,
+        SeatGraceSeconds = 2.5,
+        SitRetryInterval = 0.01,
+        NetworkOwnershipInterval = 0.005,
+        ParallelOwnershipThreads = 5,
+        Running = false,
+        TrainEnableAt = 0,
+        LastSitAttempt = 0,
+        HadSeatOnce = false,
+        LoopThread = nil,
+        VFlyEnabled = false,
+        TargetPart = nil,
+        BV = nil,
+        BG = nil,
+        LastNetworkOwnership = 0,
+        OwnershipThreads = {},
+        NoClipVehicleModel = nil,
+        NoClipCharModel = nil,
+        NoClipVehicleState = {},
+        NoClipCharState = {},
+        prevOcclusionMode = nil,
+    },
+    Misc = {
+        ThirdPerson = true,
+        FPSBooster = true,
+    },
+    Keybind = {
+        SilentAimToggleKey = Enum.KeyCode.Q,
+    }
+}
+
+-- ============================================
+-- 内部状態管理
+-- ============================================
+local State = {
+    IsCharacterInRagdoll = false,
+    noclipRunning = false,
+    noclipLoop = nil,
+    noclipTrackedChar = nil,
+    isBarrierRunning = false,
+    CameraClone = nil,
+    CameraInitialized = false,
+    HRPs = {},
+    Character = nil,
+    Humanoid = nil,
+    Root = nil,
+    GrabbedPart = nil,
+    LastGrabbedTarget = nil,
+    LastGrabbedTime = 0,
+    ReachDistance = 30,
+    LastGrabTime = 0,
+    GrabCooldown = 0.05,
+    connections = {
+        strength = nil,
+        antiGrab = nil,
+        antiExplosionChar = nil,
+        walkspeed = nil,
+        infiniteJump = nil,
+        thirdPerson = nil,
+        fpsBooster = nil,
+    },
+    loops = {
+        noclip = nil,
+        kunaiCheck = nil,
+        antiBanana = nil,
+    },
+    struggleTasks = {},
+    GrabMaintainConnections = {},
+    ESPObjects = {},
+    HitboxObjects = {},
+    NameLabels = {},
+    paintPartsBackup = {},
+    paintConnections = {},
+    originalSettings = nil,
+    currentKunai = nil,
+    timers = {
+        AuraTimer = 0,
+        espTimer = 0,
+        AntiBananaTimer = 0,
+        LastUpdate = 0,
+        UPDATE_INTERVAL = 0.1,
+    },
+    originalJump = {
+        UseJumpPower = nil,
+        JumpPower = nil,
+        JumpHeight = nil,
+    },
+    antiGucci = {
+        safePosition = nil,
+        restoreFrames = 0,
+        connection = nil,
+        safePositionTrain = nil,
+        restoreFramesTrain = 0,
+        connectionTrain = nil,
+    },
+    ToyModWings = {
+        Parts = {},
+        BodyPositions = {},
+        AlignOrientations = {},
+        OriginalAnchored = {},
+        Connection = nil,
+        FlapTime = 0,
+        LastPos = nil,
+        TargetCFrames = {}
+    },
+    cameraAnchor = nil,
+    originalCameraSubject = nil,
+    freezePart = nil,
+}
+
+-- ============================================
+-- 基本ユーティリティ関数
+-- ============================================
+local Utility = {}
+
+function Utility.GetPlayerCharacter()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChildOfClass("Humanoid") then
+        return char
+    end
+end
+
+function Utility.GetPlayerRootPart()
+    local char = Utility.GetPlayerCharacter()
+    return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+end
+
+function Utility.GetPlayerCFrame()
+    local root = Utility.GetPlayerRootPart()
+    return root and root.CFrame
+end
+
+function Utility.getHum(char)
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+function Utility.getRoot(char)
+    return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+end
+
+-- ============================================
+-- グラブタブ機能
+-- ============================================
+local GrabFeature = {}
+
+function GrabFeature.onGrabPartAdded_ThrowStrength(model)
+    if model.Name ~= "GrabParts" then return end
+    if not Settings.Grab.EnableThrowStrength then return end
+    task.wait(0.1)
+    local grabPart = model:FindFirstChild("GrabPart")
+    if not grabPart then return end
+    local weld = grabPart:FindFirstChildOfClass("WeldConstraint")
+    if not weld or not weld.Part1 then return end
+    local partToImpulse = weld.Part1
+    if not partToImpulse:IsA("BasePart") then return end
+
+    local velocityObj = Instance.new("BodyVelocity")
+    velocityObj.MaxForce = Vector3.zero
+    velocityObj.Velocity = Vector3.zero
+    velocityObj.P = 2000
+    velocityObj.Name = "ThrowForce"
+    velocityObj.Parent = partToImpulse
+
+    local conn
+    conn = model:GetPropertyChangedSignal("Parent"):Connect(function()
+        if not model.Parent then
+            local lastInput = UserInputService:GetLastInputType()
+            if lastInput == Enum.UserInputType.MouseButton2 or lastInput == Enum.UserInputType.Touch then
+                if Settings.Grab.EnableThrowStrength then
+                    velocityObj.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    velocityObj.Velocity = Workspace.CurrentCamera.CFrame.LookVector * Settings.Grab.strength
+                    Debris:AddItem(velocityObj, 1)
+                else
+                    velocityObj:Destroy()
+                end
+            else
+                velocityObj:Destroy()
+            end
+            if conn then conn:Disconnect() end
+        end
+    end)
+end
+
+function GrabFeature.enableStrength()
+    Settings.Grab.EnableThrowStrength = true
+    if State.connections.strength then State.connections.strength:Disconnect() end
+    State.connections.strength = Workspace.ChildAdded:Connect(GrabFeature.onGrabPartAdded_ThrowStrength)
+end
+
+function GrabFeature.disableStrength()
+    Settings.Grab.EnableThrowStrength = false
+    if State.connections.strength then
+        State.connections.strength:Disconnect()
+        State.connections.strength = nil
+    end
+end
+
+function FTAP.SetNetworkOwner(part, cf)
+    if not part or not part.Parent then return end
+    pcall(function()
+        setNetworkOwnerEvent:FireServer(part, cf or Utility.GetPlayerCFrame())
+    end)
+end
+
+function FTAP.Velocity(part, vel)
+    if not part then return end
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+    bv.Velocity = vel
+    bv.Parent = part
+    Debris:AddItem(bv, 1.2)
+end
+
+function FTAP.DestroyGrabLine(part)
+    if not part then return end
+    pcall(function()
+        destroyGrabLineEvent:FireServer(part)
+    end)
+end
+
+function GrabFeature.maintainNetworkOwnership(grabModel, grabbedPart)
+    if State.GrabMaintainConnections[grabModel] then
+        State.GrabMaintainConnections[grabModel]:Disconnect()
+        State.GrabMaintainConnections[grabModel] = nil
+    end
+
+    local conn = RunService.Heartbeat:Connect(function()
+        if not grabModel.Parent or not grabbedPart.Parent then
+            if State.GrabMaintainConnections[grabModel] then
+                State.GrabMaintainConnections[grabModel]:Disconnect()
+                State.GrabMaintainConnections[grabModel] = nil
+            end
+            return
+        end
+
+        FTAP.SetNetworkOwner(grabbedPart)
+        FTAP.SetNetworkOwner(grabbedPart, Utility.GetPlayerCFrame())
+
+        if Settings.Grab.VoidGrab then
+            FTAP.Velocity(grabbedPart, Vector3.new(0, 12000, 0))
+        end
+    end)
+
+    State.GrabMaintainConnections[grabModel] = conn
+end
+
+function GrabFeature.onGrabPartsAdded_FTAP(model)
+    if model.Name ~= "GrabParts" or not model:IsA("Model") then return end
+
+    local grabPart = model:WaitForChild("GrabPart", 8)
+    if not grabPart then return end
+
+    local weld = grabPart:FindFirstChild("WeldConstraint")
+    if not weld or not weld.Part1 then return end
+
+    local grabbedPart = weld.Part1
+    if grabbedPart.Anchored then return end
+
+    local victimChar = grabbedPart.Parent
+    if not victimChar then return end
+
+    local victimPlayer = Players:GetPlayerFromCharacter(victimChar)
+    if not victimPlayer then return end
+
+    local anySpecialEnabled = Settings.Grab.VoidGrab or Settings.Grab.DeathGrab or Settings.Grab.KickGrab or Settings.Grab.NoclipGrab
+
+    if not anySpecialEnabled then
+        return
+    end
+
+    task.wait(0.07)
+
+    for _ = 1, 6 do
+        FTAP.SetNetworkOwner(grabbedPart)
+        task.wait(0.04)
+    end
+
+    GrabFeature.maintainNetworkOwnership(model, grabbedPart)
+
+    if Settings.Grab.VoidGrab then
+        FTAP.Velocity(grabbedPart, Vector3.new(0, 14000, 0))
+        task.delay(2.0, function()
+            if grabbedPart and grabbedPart.Parent then
+                FTAP.DestroyGrabLine(grabbedPart)
+            end
+        end)
+    end
+
+    if Settings.Grab.DeathGrab then
+        local hum = Utility.getHum(victimChar)
+        if hum then
+            hum.Health = 0
+            hum:ChangeState(Enum.HumanoidStateType.Dead)
+            task.delay(0.3, function()
+                if grabbedPart and grabbedPart.Parent then
+                    FTAP.DestroyGrabLine(grabbedPart)
+                end
+            end)
+        end
+    end
+
+    if Settings.Grab.KickGrab then
+        task.spawn(function()
+            task.wait(0.55)
+            if not grabbedPart or not grabbedPart.Parent then return end
+
+            local victimRoot = Utility.getRoot(victimChar)
+            if not victimRoot then return end
+
+            local myRoot = Utility.GetPlayerRootPart()
+            if not myRoot then return end
+
+            local oldPos = myRoot.CFrame
+
+            while victimRoot and victimRoot.Parent do
+                local hum = Utility.getHum(victimChar)
+                if hum and hum.FloorMaterial ~= Enum.Material.Air then
+                    myRoot.CFrame = victimRoot.CFrame * CFrame.new(0, 3, 0)
+                    task.wait(0.14)
+
+                    FTAP.SetNetworkOwner(victimRoot)
+                    task.wait(0.1)
+
+                    local extremePos = CFrame.new(2.5e25, 2.5e25, 2.5e25)
+                    local bp = Instance.new("BodyPosition")
+                    bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    bp.Position = extremePos.Position
+                    bp.P = 25000
+                    bp.D = 6000
+                    bp.Parent = victimRoot
+
+                    FTAP.Velocity(victimRoot, Vector3.new(0, 1e6, 0) + victimRoot.AssemblyLinearVelocity * 1e6)
+
+                    task.wait(0.28)
+
+                    if victimRoot and victimRoot.Parent then
+                        FTAP.DestroyGrabLine(victimRoot)
+                    end
+
+                    myRoot.CFrame = oldPos
+                    bp:Destroy()
+                    break
+                end
+                task.wait(0.04)
+            end
+        end)
+    end
+end
+
+function GrabFeature.noclipGrab()
+    State.noclipRunning = true
+    while State.noclipRunning do
+        pcall(function()
+            local grabModel = Workspace:FindFirstChild("GrabParts")
+            if grabModel and grabModel.Name == "GrabParts" then
+                local grabPart = grabModel:FindFirstChild("GrabPart")
+                if not grabPart then return end
+
+                local weld = grabPart:FindFirstChildOfClass("WeldConstraint")
+                if not weld or not weld.Part1 then return end
+
+                local grabbedPart = weld.Part1
+                local character = grabbedPart.Parent
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    while Workspace:FindFirstChild("GrabParts") do
+                        for _, part in pairs(character:GetChildren()) do
+                            if part:IsA("BasePart") then
+                                part.CanCollide = false
+                            end
+                        end
+                        task.wait()
+                    end
+                    for _, part in pairs(character:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = true
+                        end
+                    end
+                end
+            else
+                task.wait()
+            end
+        end)
+        task.wait()
+    end
+end
+
+function GrabFeature.toggleNoclip(enabled)
+    if enabled then
+        if State.loops.noclip then
+            task.cancel(State.loops.noclip)
+        end
+        State.loops.noclip = task.spawn(GrabFeature.noclipGrab)
+    else
+        State.noclipRunning = false
+        if State.loops.noclip then
+            task.cancel(State.loops.noclip)
+            State.loops.noclip = nil
+        end
+    end
+end
+
+-- ============================================
+-- アンチタブ機能
+-- ============================================
+local AntiFeature = {}
+
+function AntiFeature.setupAntiGrabV1()
+    isHeldValue.Changed:Connect(function(isBeingHeld)
+        if isBeingHeld and Settings.Anti.AntiGrab then
+            local hrp = (LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()):WaitForChild("HumanoidRootPart")
+            local conn
+            conn = RunService.Heartbeat:Connect(function()
+                if isHeldValue.Value then
+                    hrp.Velocity = Vector3.new()
+                    hrp.Anchored = true
+                    struggleEvent:FireServer(LocalPlayer)
+                    ragdollRemoteEvent:FireServer(hrp, 0)
+                else
+                    hrp.Velocity = Vector3.new()
+                    hrp.Anchored = false
+                    conn:Disconnect()
+                end
+            end)
+        end
+    end)
+end
+
+function AntiFeature.startStruggleLoop()
+    local char = LocalPlayer.Character
+    if not char or State.struggleTasks[char] then return end
+    State.struggleTasks[char] = true
+    task.spawn(function()
+        while State.struggleTasks[char] do
+            local head = char:FindFirstChild("Head")
+            if head and head:FindFirstChild("PartOwner") and isHeldValue.Value then
+                pcall(function()
+                    struggleEvent:FireServer()
+                    local gce = ReplicatedStorage:FindFirstChild("GameCorrectionEvents")
+                    if gce then
+                        local sav = gce:FindFirstChild("StopAllVelocity")
+                        if sav then sav:FireServer() end
+                    end
+                end)
+            else
+                State.struggleTasks[char] = nil
+                break
+            end
+            task.wait(0.1)
+        end
+    end)
+end
+
+function AntiFeature.enableAntiGrabSolaris()
+    if State.connections.antiGrab then State.connections.antiGrab:Disconnect() end
+    State.connections.antiGrab = RunService.Heartbeat:Connect(function()
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("Head") then
+            local head = char.Head
+            if head:FindFirstChild("PartOwner") and isHeldValue.Value then
+                AntiFeature.startStruggleLoop()
+            end
+        end
+    end)
+end
+
+function AntiFeature.disableAntiGrabSolaris()
+    if State.connections.antiGrab then
+        State.connections.antiGrab:Disconnect()
+        State.connections.antiGrab = nil
+    end
+    for k in pairs(State.struggleTasks) do
+        State.struggleTasks[k] = nil
+    end
+end
+
+local antiExplosionConnection = nil
+
+function AntiFeature.setupAntiExplosion(character)
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    if not humanoid then return end
+    local ragdolled = humanoid:FindFirstChild("Ragdolled")
+    if not ragdolled then return end
+
+    if antiExplosionConnection then
+        antiExplosionConnection:Disconnect()
+    end
+
+    antiExplosionConnection = ragdolled:GetPropertyChangedSignal("Value"):Connect(function()
+        for _, part in ipairs(character:GetChildren()) do
+            if part:IsA("BasePart") then
+                part.Anchored = ragdolled.Value
+            end
+        end
+    end)
+end
+
+local kunaiMessageGui = nil
+local kunaiTextLabel = nil
+
+function AntiFeature.createKunaiMessageGui()
+    if kunaiMessageGui then return end
+    kunaiMessageGui = Instance.new("ScreenGui")
+    kunaiMessageGui.Name = "KunaiMessageGui"
+    kunaiMessageGui.ResetOnSpawn = false
+    kunaiMessageGui.Parent = PlayerGui
+
+    kunaiTextLabel = Instance.new("TextLabel")
+    kunaiTextLabel.Size = UDim2.new(0, 480, 0, 38)
+    kunaiTextLabel.Position = UDim2.new(0, 16, 1, -60)
+    kunaiTextLabel.AnchorPoint = Vector2.new(0, 1)
+    kunaiTextLabel.BackgroundTransparency = 1
+    kunaiTextLabel.TextColor3 = Color3.fromRGB(255, 240, 120)
+    kunaiTextLabel.Font = Enum.Font.Code
+    kunaiTextLabel.TextSize = 18
+    kunaiTextLabel.TextXAlignment = Enum.TextXAlignment.Left
+    kunaiTextLabel.TextTransparency = 1
+    kunaiTextLabel.RichText = true
+    kunaiTextLabel.Parent = kunaiMessageGui
+end
+
+local fadeInInfo = TweenInfo.new(0.3, Enum.EasingStyle.Linear)
+local fadeOutInfo = TweenInfo.new(0.6, Enum.EasingStyle.Linear)
+
+function AntiFeature.typeKunaiMessage(msg, charDelay)
+    charDelay = charDelay or 0.038
+    if not kunaiTextLabel then AntiFeature.createKunaiMessageGui() end
+    kunaiTextLabel.Text = ""
+    TweenService:Create(kunaiTextLabel, fadeInInfo, {TextTransparency = 0}):Play()
+
+    task.spawn(function()
+        for i = 1, #msg do
+            kunaiTextLabel.Text = msg:sub(1, i)
+            task.wait(charDelay)
+        end
+        task.wait(2.5)
+        TweenService:Create(kunaiTextLabel, fadeOutInfo, {TextTransparency = 1}):Play()
+    end)
+end
+
+function AntiFeature.getRightLeg(char)
+    return char:FindFirstChild("Right Leg")
+        or char:FindFirstChild("RightFoot")
+        or char:FindFirstChild("RightLowerLeg")
+        or char:FindFirstChild("RightUpperLeg")
+end
+
+function AntiFeature.cleanupMyKunaiToys()
+    if not spawnedInToysFolder then return end
+    for _, toy in ipairs(spawnedInToysFolder:GetChildren()) do
+        if toy.Name == "NinjaKunai" then
+            pcall(function()
+                DeleteToyRE:FireServer(toy)
+            end)
+        end
+    end
+end
+
+function AntiFeature.attachKunai(isReattach)
+    AntiFeature.cleanupMyKunaiToys()
+    local char = Utility.GetPlayerCharacter()
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local rightLeg = AntiFeature.getRightLeg(char)
+    if not rightLeg then return end
+
+    local spawnCFrame = hrp.CFrame * CFrame.new(0, 0, -3.5)
+
+    task.spawn(function()
+        pcall(function()
+            SpawnToyRF:InvokeServer("NinjaKunai", spawnCFrame, Vector3.new(0, 0, 0))
+        end)
+    end)
+
+    task.wait(0.1)
+
+    local kunai = nil
+    for i = 1, 15 do
+        kunai = spawnedInToysFolder:FindFirstChild("NinjaKunai")
+        if kunai and kunai:FindFirstChild("StickyPart") then break end
+        task.wait(0.05)
+    end
+
+    if not kunai or not kunai:FindFirstChild("StickyPart") then
+        if not isReattach then
+            task.delay(0.3, function()
+                if Settings.Anti.AntiKickKunai then AntiFeature.attachKunai(true) end
+            end)
+        end
+        return
+    end
+
+    local sticky = kunai.StickyPart
+
+    for i = 1, 25 do
+        task.spawn(function()
+            pcall(function()
+                local randOffset = CFrame.new(
+                    math.random(-10,10)/100,
+                    math.random(-10,10)/100,
+                    math.random(-8,8)/100
+                )
+                setNetworkOwnerEvent:FireServer(sticky, rightLeg.CFrame * randOffset)
+            end)
+        end)
+    end
+
+    local attachCFrame = CFrame.new(0.04, 0.48, 0.02) * CFrame.Angles(0, math.rad(1), math.rad(-90))
+
+    for i = 1, 20 do
+        task.spawn(function()
+            pcall(function()
+                StickyPartEvent:FireServer(sticky, rightLeg, attachCFrame)
+            end)
+        end)
+    end
+
+    task.spawn(function()
+        for _, v in kunai:GetDescendants() do
+            if v:IsA("BasePart") then
+                v.Transparency = 0.7
+            elseif v:IsA("Decal") or v:IsA("Texture") then
+                v.Transparency = 0.7
+            end
+        end
+    end)
+
+    State.currentKunai = kunai
+end
+
+function AntiFeature.isKunaiAttached()
+    if not Settings.Anti.AntiKickKunai then return false end
+    if not spawnedInToysFolder then return false end
+
+    local kunai = nil
+    for _, obj in spawnedInToysFolder:GetChildren() do
+        if obj.Name == "NinjaKunai" then kunai = obj break end
+    end
+
+    if not kunai or not kunai:FindFirstChild("StickyPart") then return false end
+
+    local leg = AntiFeature.getRightLeg(Utility.GetPlayerCharacter())
+    if not leg then return false end
+
+    local dist = (kunai.StickyPart.Position - leg.Position).Magnitude
+    return dist < 7
+end
+
+function AntiFeature.setTouchQuery(state)
+    local char = Workspace:FindFirstChild(LocalPlayer.Name)
+    if not char then return end
+    for _, v in ipairs(char:GetChildren()) do
+        if v:IsA("Part") or v:IsA("BasePart") then
+            v.CanTouch = state
+            v.CanQuery = state
+        end
+    end
+end
+
+function AntiFeature.deleteAllPaintParts()
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name == "PaintPlayerPart" then
+            local clone = obj:Clone()
+            clone.Archivable = true
+            State.paintPartsBackup[obj:GetDebugId()] = {
+                clone = clone,
+                parent = obj.Parent
+            }
+            obj:Destroy()
+        end
+    end
+end
+
+function AntiFeature.restorePaintParts()
+    for _, data in pairs(State.paintPartsBackup) do
+        if data.clone and data.parent then
+            data.clone.Parent = data.parent
+        end
+    end
+    State.paintPartsBackup = {}
+end
+
+function AntiFeature.watchNewPaintParts()
+    table.insert(State.paintConnections, Workspace.DescendantAdded:Connect(function(obj)
+        if obj:IsA("BasePart") and obj.Name == "PaintPlayerPart" then
+            task.defer(function()
+                if obj and obj.Parent then
+                    local clone = obj:Clone()
+                    clone.Archivable = true
+                    State.paintPartsBackup[obj:GetDebugId()] = {
+                        clone = clone,
+                        parent = obj.Parent
+                    }
+                    obj:Destroy()
+                end
+            end)
+        end
+    end))
+end
+
+function AntiFeature.disconnectWatchers()
+    for _, conn in ipairs(State.paintConnections) do
+        if conn.Connected then
+            conn:Disconnect()
+        end
+    end
+    State.paintConnections = {}
+end
+
+function AntiFeature.spawnBlobman()
+    local args = {
+        [1] = "CreatureBlobman",
+        [2] = CFrame.new(0, 5000000, 0),
+        [3] = Vector3.new(0, 60, 0)
+    }
+    pcall(function()
+        ReplicatedStorage.MenuToys.SpawnToyRemoteFunction:InvokeServer(unpack(args))
+    end)
+    local folder = Workspace:WaitForChild(LocalPlayer.Name .. "SpawnedInToys", 5)
+    if folder and folder:FindFirstChild("CreatureBlobman") then
+        local blob = folder.CreatureBlobman
+        if blob:FindFirstChild("Head") then
+            blob.Head.CFrame = CFrame.new(0, 50000, 0)
+            blob.Head.Anchored = true
+        end
+    end
+end
+
+function AntiFeature.startAntiGucci()
+    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local humanoid = character:WaitForChild("Humanoid")
+    local rootPart = character:WaitForChild("HumanoidRootPart")
+    State.antiGucci.safePosition = rootPart.Position
+    
+    local folder = Workspace:FindFirstChild(LocalPlayer.Name .. "SpawnedInToys")
+    local blob = folder and folder:FindFirstChild("CreatureBlobman")
+    local seat = blob and blob:FindFirstChild("VehicleSeat")
+    
+    if not blob then
+        AntiFeature.spawnBlobman()
+        task.wait(1)
+        folder = Workspace:FindFirstChild(LocalPlayer.Name .. "SpawnedInToys")
+        blob = folder and folder:FindFirstChild("CreatureBlobman")
+        seat = blob and blob:FindFirstChild("VehicleSeat")
+    end
+    
+    if seat and seat:IsA("VehicleSeat") then
+        rootPart.CFrame = seat.CFrame + Vector3.new(0, 2, 0)
+        seat:Sit(humanoid)
+    end
+    
+    humanoid:GetPropertyChangedSignal("Jump"):Connect(function()
+        if humanoid.Jump and humanoid.Sit then
+            State.antiGucci.restoreFrames = 15
+            State.antiGucci.safePosition = rootPart.Position
+        end
+    end)
+    
+    if State.antiGucci.connection then
+        State.antiGucci.connection:Disconnect()
+    end
+    
+    State.antiGucci.connection = RunService.Heartbeat:Connect(function()
+        if not rootPart or not humanoid then
+            return
+        end
+        
+        local beingHeld = LocalPlayer:FindFirstChild("IsHeld")
+        if not beingHeld or not beingHeld.Value then
+            ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(rootPart, 0)
+        end
+        
+        local blobFolder = Workspace:FindFirstChild(LocalPlayer.Name .. "SpawnedInToys")
+        local currentBlob = blobFolder and blobFolder:FindFirstChild("CreatureBlobman")
+        if currentBlob and currentBlob:FindFirstChild("Head") then
+            currentBlob.Head.CFrame = CFrame.new(0, 50000, 0)
+            currentBlob.Head.Anchored = true
+        end
+        
+        if State.antiGucci.restoreFrames > 0 then
+            rootPart.CFrame = CFrame.new(State.antiGucci.safePosition)
+            State.antiGucci.restoreFrames = State.antiGucci.restoreFrames - 1
+        end
+    end)
+    
+    task.spawn(function()
+        while humanoid.Sit do
+            task.wait(1)
+        end
+        task.wait(0.5)
+        rootPart.CFrame = CFrame.new(State.antiGucci.safePosition)
+    end)
+end
+
+function AntiFeature.stopAntiGucci()
+    if State.antiGucci.connection then
+        State.antiGucci.connection:Disconnect()
+        State.antiGucci.connection = nil
+    end
+    
+    local character = LocalPlayer.Character
+    if character then
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character:FindFirstChild("Humanoid")
+        if rootPart and State.antiGucci.safePosition then
+            rootPart.CFrame = CFrame.new(State.antiGucci.safePosition)
+        end
+        if humanoid then
+            humanoid.Sit = false
+        end
+    end
+    
+    task.wait(0.1)
+    local blobFolder = Workspace:FindFirstChild(LocalPlayer.Name .. "SpawnedInToys")
+    if blobFolder and blobFolder:FindFirstChild("CreatureBlobman") then
+        pcall(function()
+            ReplicatedStorage.MenuToys.DestroyToy:FireServer(blobFolder.CreatureBlobman)
+        end)
+    end
+end
+
+function AntiFeature.startAntiGucciTrain()
+    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local humanoid = character:WaitForChild("Humanoid")
+    local rootPart = character:WaitForChild("HumanoidRootPart")
+    State.antiGucci.safePositionTrain = rootPart.Position
+    
+    local folder = workspace.Map.AlwaysHereTweenedObjects
+    local train = folder and folder:FindFirstChild("Train")
+    local seat
+    
+    if train then
+        for _, d in ipairs(train:GetDescendants()) do
+            if d:IsA("Seat") then
+                seat = d
+                break
+            end
+        end
+    end
+    
+    if seat then
+        rootPart.CFrame = seat.CFrame + Vector3.new(0, 2, 0)
+        seat:Sit(humanoid)
+    end
+    
+    humanoid:GetPropertyChangedSignal("Jump"):Connect(function()
+        if humanoid.Jump and humanoid.Sit then
+            State.antiGucci.restoreFramesTrain = 15
+            State.antiGucci.safePositionTrain = rootPart.Position
+        end
+    end)
+    
+    if State.antiGucci.connectionTrain then
+        State.antiGucci.connectionTrain:Disconnect()
+    end
+    
+    State.antiGucci.connectionTrain = RunService.Heartbeat:Connect(function()
+        if not rootPart or not humanoid then
+            return
+        end
+        ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(rootPart, 0)
+        if State.antiGucci.restoreFramesTrain > 0 then
+            rootPart.CFrame = CFrame.new(State.antiGucci.safePositionTrain)
+            State.antiGucci.restoreFramesTrain = State.antiGucci.restoreFramesTrain - 1
+        end
+    end)
+    
+    task.spawn(function()
+        while humanoid.Sit do
+            task.wait(1)
+        end
+        task.wait(0.5)
+        rootPart.CFrame = CFrame.new(State.antiGucci.safePositionTrain)
+    end)
+end
+
+function AntiFeature.stopAntiGucciTrain()
+    if State.antiGucci.connectionTrain then
+        State.antiGucci.connectionTrain:Disconnect()
+        State.antiGucci.connectionTrain = nil
+    end
+end
+
+function AntiFeature.ragdoll()
+    local args = {
+        [1] = LocalPlayer.Character:FindFirstChild("HumanoidRootPart"),
+        [2] = 0
+    }
+    if args[1] then
+        ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(unpack(args))
+    end
+end
+
+-- ============================================
+-- ブロブマンベータ機能
+-- ============================================
+local BlobmanBetaFeature = {}
+
+function BlobmanBetaFeature.getLocalChar() return LocalPlayer.Character end
+function BlobmanBetaFeature.getLocalRoot()
+    if not BlobmanBetaFeature.getLocalChar() then return end
+    return BlobmanBetaFeature.getLocalChar():FindFirstChild("HumanoidRootPart") or BlobmanBetaFeature.getLocalChar():FindFirstChild("Torso")
+end
+function BlobmanBetaFeature.getLocalHum()
+    if not BlobmanBetaFeature.getLocalChar() then return end
+    return BlobmanBetaFeature.getLocalChar():FindFirstChildOfClass("Humanoid")
+end
+function BlobmanBetaFeature.getInv()
+    return Workspace:FindFirstChild(LocalPlayer.Name .. "SpawnedInToys")
+end
+
+function BlobmanBetaFeature.SetNetworkOwner(part)
+    ReplicatedStorage.GrabEvents.SetNetworkOwner:FireServer(part, BlobmanBetaFeature.getLocalRoot().CFrame)
+end
+
+function BlobmanBetaFeature.ungrab(part)
+    ReplicatedStorage.GrabEvents.DestroyGrabLine:FireServer(part)
+end
+
+function BlobmanBetaFeature.getBlobman()
+    local inv = BlobmanBetaFeature.getInv()
+    if inv then
+        local v = inv:FindFirstChild("CreatureBlobman")
+        if v and v.ClassName == "Model" and v:FindFirstChild("VehicleSeat") then
+            return v
+        end
+    end
+    for _, p in Workspace.PlotItems:GetChildren() do
+        local m = p:FindFirstChild("CreatureBlobman")
+        if m and m:FindFirstChild("PlayerValue") and m.PlayerValue.Value == LocalPlayer.Name then
+            return m
+        end
+    end
+    return nil
+end
+
+function BlobmanBetaFeature.spawnBlobman()
+    ReplicatedStorage.MenuToys.SpawnToyRemoteFunction:InvokeServer("CreatureBlobman", BlobmanBetaFeature.getLocalRoot().CFrame, Vector3.zero)
+    task.wait(1.0)
+    return BlobmanBetaFeature.getBlobman()
+end
+
+function BlobmanBetaFeature.destroyBlobman()
+    local blob = BlobmanBetaFeature.getBlobman()
+    if blob then
+        ReplicatedStorage.MenuToys.DestroyToy:FireServer(blob)
+    end
+end
+
+function BlobmanBetaFeature.resetBlobmanPhysics()
+    local blob = BlobmanBetaFeature.getBlobman()
+    if not blob then return end
+    for _, part in blob:GetDescendants() do
+        if part:IsA("BasePart") then
+            part.AssemblyLinearVelocity = Vector3.zero
+            part.AssemblyAngularVelocity = Vector3.zero
+        end
+    end
+end
+
+function BlobmanBetaFeature.stabilizeBlobman()
+    local blob = BlobmanBetaFeature.getBlobman()
+    if not blob or not blob:FindFirstChild("VehicleSeat") then return end
+    local seat = blob.VehicleSeat
+    if seat then
+        seat.CFrame = seat.CFrame + (BlobmanBetaFeature.getLocalRoot().CFrame.Position - seat.Position) * 0.1
+    end
+end
+
+function BlobmanBetaFeature.isSittingOnBlobman()
+    local hum = BlobmanBetaFeature.getLocalHum()
+    if not hum then return false end
+    local blob = BlobmanBetaFeature.getBlobman()
+    if not blob or not blob:FindFirstChild("VehicleSeat") then return false end
+    local seat = blob.VehicleSeat
+    return hum.Sit and hum.SeatPart == seat
+end
+
+function BlobmanBetaFeature.ensureSitBlobman()
+    local blob = BlobmanBetaFeature.getBlobman()
+    if not blob or not blob:FindFirstChild("VehicleSeat") then return false end
+    local seat = blob.VehicleSeat
+    local hum = BlobmanBetaFeature.getLocalHum()
+    if hum and not hum.Sit then
+        seat:Sit(hum)
+        task.wait(0.6)
+    end
+    BlobmanBetaFeature.resetBlobmanPhysics()
+    BlobmanBetaFeature.stabilizeBlobman()
+    return BlobmanBetaFeature.isSittingOnBlobman()
+end
+
+function BlobmanBetaFeature.blobGrab(blob, target, side)
+    if not blob then return end
+    local detector = blob:FindFirstChild(side .. "Detector")
+    if not detector then return end
+    local weld = detector:FindFirstChild(side .. "Weld")
+    if not weld then return end
+    local script = blob:FindFirstChild("BlobmanSeatAndOwnerScript", true)
+    if not script then return end
+    local remote = script:FindFirstChild("CreatureGrab")
+    if remote then
+        pcall(function()
+            remote:FireServer(detector, target, weld)
+        end)
+    end
+end
+
+function BlobmanBetaFeature.blobDrop(blob, target, side)
+    if not blob then return end
+    local detector = blob:FindFirstChild(side .. "Detector")
+    if not detector then return end
+    local script = blob:FindFirstChild("BlobmanSeatAndOwnerScript", true)
+    if not script then return end
+    local remote = script:FindFirstChild("CreatureDrop")
+    if remote then
+        pcall(function()
+            remote:FireServer(detector, target)
+        end)
+    end
+end
+
+function BlobmanBetaFeature.blobKick(blob, target, side)
+    BlobmanBetaFeature.blobGrab(blob, BlobmanBetaFeature.getLocalRoot(), side)
+    task.wait(0.08)
+    BlobmanBetaFeature.SetNetworkOwner(target)
+    task.wait(0.08)
+    target.CFrame = target.CFrame + Vector3.new(0, Settings.BlobmanBeta.FloatAmount, 0)
+    task.wait(0.08)
+    BlobmanBetaFeature.ungrab(target)
+    task.wait(0.08)
+    BlobmanBetaFeature.blobGrab(blob, target, side)
+    task.wait(0.08)
+    BlobmanBetaFeature.blobDrop(blob, target, side)
+    task.wait(0.08)
+    BlobmanBetaFeature.ungrab(target)
+end
+
+function BlobmanBetaFeature.ensureBlob()
+    local blob = BlobmanBetaFeature.getBlobman()
+    if not blob then blob = BlobmanBetaFeature.spawnBlobman() end
+    local hum = BlobmanBetaFeature.getLocalHum()
+    if hum and not hum.Sit then
+        blob.VehicleSeat:Sit(hum)
+        task.wait(0.22)
+    end
+    return BlobmanBetaFeature.getBlobman()
+end
+
+-- ============================================
+-- PvPタブ機能
+-- ============================================
+local PvPFeature = {}
+
+function PvPFeature.UpdateCharacter(NewCharacter)
+    if not (NewCharacter and NewCharacter:IsDescendantOf(workspace)) then return end
+    
+    State.Character = NewCharacter
+    State.Humanoid = State.Character:WaitForChild("Humanoid", 3)
+    State.Root = State.Character:WaitForChild("HumanoidRootPart", 3)
+    
+    local CurrentReach = LocalPlayer:FindFirstChild("CurrentReach")
+    if CurrentReach then
+        State.ReachDistance = CurrentReach.Value
+    end
+    
+    State.HRPs[State.Root] = nil
+end
+
+function PvPFeature.IsPlayerTarget(HRP)
+    if not HRP or not HRP.Parent then return false end
+    
+    local Model = HRP.Parent
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Character == Model and player ~= LocalPlayer then
+            return true
+        end
+    end
+    return false
+end
+
+function PvPFeature.GetTarget()
+    if not Settings.PvP.SilentAimEnabled then return nil end
+    if not State.CameraClone or not State.Root then return nil end
+    
+    local Center = Camera.ViewportSize / 2
+    local Distance = math.huge
+    local Target = nil
+    
+    local MaxScreenDistance = (Camera.ViewportSize.X + Camera.ViewportSize.Y) / 2
+    local AdjustedStrength = (Settings.PvP.AimStrength / 100) * MaxScreenDistance
+    
+    for HRP in pairs(State.HRPs) do
+        if HRP and HRP.Parent and HRP ~= State.Root and HRP:IsDescendantOf(workspace) then
+            local Model = HRP.Parent
+            local TargetHumanoid = Model:FindFirstChildWhichIsA("Humanoid")
+            if TargetHumanoid and TargetHumanoid.Health > 0 then
+                local Screen3D, OnScreen = Camera:WorldToScreenPoint(HRP.Position)
+                
+                if OnScreen then
+                    local Magnitude = (HRP.Position - State.CameraClone.CFrame.Position).Magnitude
+                    
+                    if Magnitude <= State.ReachDistance then
+                        local Screen2D = Vector2.new(Screen3D.X, Screen3D.Y)
+                        local ScreenDistance = (Screen2D - Center).Magnitude
+                        
+                        if ScreenDistance <= AdjustedStrength then
+                            if ScreenDistance < Distance then
+                                Distance = ScreenDistance
+                                Target = HRP
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return Target
+end
+
+function PvPFeature.GetAutoGrabTarget()
+    if not Settings.PvP.AutoGrabEnabled then return nil end
+    if not Camera or not State.Root then return nil end
+    
+    local Center = Camera.ViewportSize / 2
+    local Distance = math.huge
+    local Target = nil
+    
+    local MaxScreenDistance = (Camera.ViewportSize.X + Camera.ViewportSize.Y) / 2
+    local AdjustedStrength = (Settings.PvP.AimStrength / 100) * MaxScreenDistance
+    
+    for HRP in pairs(State.HRPs) do
+        if HRP and HRP.Parent and HRP ~= State.Root and HRP:IsDescendantOf(workspace) then
+            if PvPFeature.IsPlayerTarget(HRP) then
+                local Model = HRP.Parent
+                local TargetHumanoid = Model:FindFirstChildWhichIsA("Humanoid")
+                
+                if TargetHumanoid and TargetHumanoid.Health > 0 then
+                    if HRP == State.LastGrabbedTarget and tick() - State.LastGrabbedTime < 0.5 then
+                        goto continue
+                    end
+                    
+                    local Screen3D, OnScreen = Camera:WorldToScreenPoint(HRP.Position)
+                    
+                    if OnScreen then
+                        local Magnitude = (HRP.Position - Camera.CFrame.Position).Magnitude
+                        
+                        if Magnitude <= State.ReachDistance then
+                            local Screen2D = Vector2.new(Screen3D.X, Screen3D.Y)
+                            local ScreenDistance = (Screen2D - Center).Magnitude
+                            
+                            if ScreenDistance <= AdjustedStrength * 0.9 then
+                                if ScreenDistance < Distance then
+                                    Distance = ScreenDistance
+                                    Target = HRP
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        ::continue::
+    end
+    
+    return Target
+end
+
+-- ============================================
+-- Visuals機能
+-- ============================================
+local VisualsFeature = {}
+
+function VisualsFeature.updateESP()
+    for i = #State.ESPObjects, 1, -1 do
+        local highlight = State.ESPObjects[i]
+        if not Settings.Visuals.ESPEnabled or not highlight or not highlight.Parent then
+            pcall(function()
+                highlight:Destroy()
+            end)
+            table.remove(State.ESPObjects, i)
+        else
+            highlight.FillColor = Settings.Visuals.ESPFillColor
+            highlight.OutlineColor = Settings.Visuals.ESPOutlineColor
+            highlight.FillTransparency = Settings.Visuals.ESPFillTransparency
+            highlight.OutlineTransparency = Settings.Visuals.ESPOutlineTransparency
+        end
+    end
+    
+    for i = #State.HitboxObjects, 1, -1 do
+        local hitbox = State.HitboxObjects[i]
+        if not Settings.Visuals.ShowHitbox or not hitbox or not hitbox.Parent then
+            pcall(function()
+                hitbox:Destroy()
+            end)
+            table.remove(State.HitboxObjects, i)
+        else
+            hitbox.Color3 = Settings.Visuals.HitboxColor
+        end
+    end
+    
+    for i = #State.NameLabels, 1, -1 do
+        local label = State.NameLabels[i]
+        if not Settings.Visuals.ShowPlayerInfo or not label or not label.Parent then
+            pcall(function()
+                label:Destroy()
+            end)
+            table.remove(State.NameLabels, i)
+        end
+    end
+end
+
+function VisualsFeature.createHitbox(character)
+    if character:FindFirstChild("__esp_hitbox") then return end
+    
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    local head = character:FindFirstChild("Head")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local leftLeg = character:FindFirstChild("Left Leg") or character:FindFirstChild("LeftFoot")
+    local rightLeg = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightFoot")
+    
+    if not hrp or not head then return end
+    
+    local topY = head.Position.Y + (head.Size.Y / 2)
+    local bottomY = hrp.Position.Y - (hrp.Size.Y / 2)
+    
+    if leftLeg then
+        local legBottom = leftLeg.Position.Y - (leftLeg.Size.Y / 2)
+        bottomY = math.min(bottomY, legBottom)
+    end
+    
+    if rightLeg then
+        local legBottom = rightLeg.Position.Y - (rightLeg.Size.Y / 2)
+        bottomY = math.min(bottomY, legBottom)
+    end
+    
+    if humanoid and humanoid.HipHeight then
+        bottomY = bottomY - humanoid.HipHeight
+    end
+    
+    local totalHeight = topY - bottomY
+    local centerY = (topY + bottomY) / 2
+    local offset = Vector3.new(0, centerY - hrp.Position.Y, 0)
+    
+    local box = Instance.new("BoxHandleAdornment")
+    box.Name = "__esp_hitbox"
+    box.Size = Vector3.new(hrp.Size.X * 1.5, totalHeight, hrp.Size.Z * 1.5)
+    box.CFrame = CFrame.new(offset)
+    box.Color3 = Settings.Visuals.HitboxColor
+    box.Transparency = 0.7
+    box.AlwaysOnTop = true
+    box.ZIndex = 1
+    box.Adornee = hrp
+    box.Parent = character
+    
+    table.insert(State.HitboxObjects, box)
+end
+
+function VisualsFeature.createNameLabel(character, player)
+    if character:FindFirstChild("__esp_namelabel") then return end
+    
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    local billboardGui = Instance.new("BillboardGui")
+    billboardGui.Name = "__esp_namelabel"
+    billboardGui.Adornee = hrp
+    billboardGui.Size = UDim2.new(0, 200, 0, 50)
+    billboardGui.StudsOffset = Vector3.new(0, 3, 0)
+    billboardGui.AlwaysOnTop = true
+    billboardGui.Parent = character
+    
+    local iconFrame = Instance.new("Frame")
+    iconFrame.Size = UDim2.new(0, 40, 0, 40)
+    iconFrame.Position = UDim2.new(0.5, -70, 0, 0)
+    iconFrame.BackgroundTransparency = 1
+    iconFrame.Parent = billboardGui
+    
+    local iconImage = Instance.new("ImageLabel")
+    iconImage.Size = UDim2.new(1, 0, 1, 0)
+    iconImage.BackgroundTransparency = 1
+    pcall(function()
+        iconImage.Image = Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+    end)
+    iconImage.Parent = iconFrame
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = iconImage
+    
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(0, 150, 0, 40)
+    nameLabel.Position = UDim2.new(0.5, -30, 0, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = player.DisplayName .. " (@" .. player.Name .. ")"
+    nameLabel.TextColor3 = Color3.new(1, 1, 1)
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.TextScaled = true
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.Parent = billboardGui
+    
+    table.insert(State.NameLabels, billboardGui)
+end
+
+function VisualsFeature.addESP(character)
+    if character:FindFirstChild("__esp_highlight") then return end
+    
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "__esp_highlight"
+    highlight.FillColor = Settings.Visuals.ESPFillColor
+    highlight.OutlineColor = Settings.Visuals.ESPOutlineColor
+    highlight.FillTransparency = Settings.Visuals.ESPFillTransparency
+    highlight.OutlineTransparency = Settings.Visuals.ESPOutlineTransparency
+    highlight.Parent = character
+    
+    table.insert(State.ESPObjects, highlight)
+end
+
+function VisualsFeature.enableESP()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            VisualsFeature.addESP(player.Character)
+            if Settings.Visuals.ShowHitbox then
+                VisualsFeature.createHitbox(player.Character)
+            end
+            if Settings.Visuals.ShowPlayerInfo then
+                VisualsFeature.createNameLabel(player.Character, player)
+            end
+        end
+    end
+end
+
+function VisualsFeature.disableESP()
+    for _, highlight in ipairs(State.ESPObjects) do
+        pcall(function() highlight:Destroy() end)
+    end
+    State.ESPObjects = {}
+    
+    for _, hitbox in ipairs(State.HitboxObjects) do
+        pcall(function() hitbox:Destroy() end)
+    end
+    State.HitboxObjects = {}
+    
+    for _, label in ipairs(State.NameLabels) do
+        pcall(function() label:Destroy() end)
+    end
+    State.NameLabels = {}
+end
+
+-- ============================================
+-- Aura機能
+-- ============================================
+local AuraHelper = {}
+
+function AuraHelper.GetNearParts(origin, radius)
+    return Workspace:GetPartBoundsInRadius(origin, radius)
+end
+
+function AuraHelper.Velocity(part, value)
+    local b = Instance.new("BodyVelocity")
+    b.MaxForce = Vector3.one * math.huge
+    b.Velocity = value
+    b.Parent = part
+    Debris:AddItem(b, 1)
+end
+
+function AuraHelper.MoveTo(part, x)
+    for _, v in ipairs(part.Parent:GetDescendants()) do
+        if v:IsA("BasePart") then
+            v.CanCollide = false
+        end
+    end
+    local pos = typeof(x) == "CFrame" and x.Position or x
+    local b = Instance.new("BodyPosition")
+    b.MaxForce = Vector3.one * math.huge
+    b.Position = pos
+    b.P = 2e4
+    b.D = 5e3
+    b.Parent = part
+    task.spawn(function()
+        b.ReachedTarget:Wait()
+        pcall(game.Destroy, b)
+        for _, v in ipairs(part.Parent:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.CanCollide = true
+            end
+        end
+    end)
+end
+
+function AuraHelper.SpawnToy(name, cframe)
+    local success, toy = pcall(function()
+        return SpawnToyRF:InvokeServer(name, cframe, Vector3.zero)
+    end)
+    if success then return toy end
+    return nil
+end
+
+function AuraHelper.IsFriend(player)
+    if not player or not player.UserId or not LocalPlayer then return false end
+    return LocalPlayer:IsFriendsWith(player.UserId)
+end
+
+local AuraFeature = {}
+
+function AuraFeature.UpdateAuras(dt)
+    State.timers.AuraTimer = State.timers.AuraTimer + dt
+    
+    if State.timers.AuraTimer >= 0.5 then
+        local root = Utility.GetPlayerRootPart()
+        if not root then 
+            State.timers.AuraTimer = 0
+            return 
+        end
+        
+        for _, v in ipairs(AuraHelper.GetNearParts(root.Position, Settings.Aura.AuraRadius)) do
+            if not v.Anchored and 
+               not v:IsDescendantOf(Utility.GetPlayerCharacter()) and 
+               (v.Name == "HumanoidRootPart" or v.Name == "Torso" or v.Name == "Head") then
+                
+                local p = Players:GetPlayerFromCharacter(v.Parent)
+                
+                if AuraHelper.IsFriend(p) and Settings.Aura.IgnoreFriendAura then 
+                    goto continue
+                end
+                
+                if Settings.Aura.VoidAura then
+                    task.spawn(function()
+                        FTAP.SetNetworkOwner(v)
+                        v.CanCollide = false
+                        AuraHelper.Velocity(v, Vector3.new(0, 1e4, 0))
+                    end)
+                end
+                
+                if Settings.Aura.RagdollAura then
+                    task.spawn(function()
+                        local pos = v.CFrame
+                        FTAP.SetNetworkOwner(v)
+                        AuraHelper.Velocity(v, Vector3.new(0, -256, 0))
+                        task.wait(0.1)
+                        AuraHelper.MoveTo(v, pos)
+                        AuraHelper.Velocity(v, Vector3.zero)
+                    end)
+                end
+                
+                if Settings.Aura.DeathAura then
+                    task.spawn(function()
+                        FTAP.SetNetworkOwner(v)
+                        task.wait(0.1)
+                        local humanoid = v.Parent:FindFirstChildOfClass("Humanoid")
+                        if humanoid then
+                            humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+                        end
+                        task.wait(0.5)
+                        FTAP.DestroyGrabLine(v)
+                    end)
+                end
+                
+                if Settings.Aura.FireAura then
+                    task.spawn(function()
+                        local campfire = AuraHelper.SpawnToy("Campfire", root.CFrame)
+                        if campfire then
+                            local soundPart = campfire:FindFirstChild("SoundPart")
+                            if soundPart then
+                                FTAP.SetNetworkOwner(soundPart)
+                                task.wait(0.1)
+                                soundPart.CFrame = v.CFrame
+                                task.delay(0.5, function()
+                                    pcall(function()
+                                        DeleteToyRE:FireServer(campfire)
+                                    end)
+                                end)
+                            end
+                        end
+                    end)
+                end
+            end
+            ::continue::
+        end
+        
+        State.timers.AuraTimer = 0
+    end
+end
+
+-- ============================================
+-- Line機能（Blitz統合）
+-- ============================================
+local LineFeature = {}
+
+local playerScriptsLine = LocalPlayer:WaitForChild("PlayerScripts")
+local characterBeamMoveScript = playerScriptsLine:WaitForChild("CharacterAndBeamMove")
+local senv = getsenv and getsenv(characterBeamMoveScript) or getfenv(characterBeamMoveScript)
+local minDistance = 3
+
+Workspace.ChildAdded:Connect(function(model)
+    if model.Name == "GrabParts" and Settings.Line.ultragrabbb then
+        local dragPart = model:FindFirstChild("DragPart")
+        if dragPart then
+            local alignOrientation = dragPart:FindFirstChild("AlignOrientation")
+            if alignOrientation then
+                alignOrientation.Responsiveness = 200
+                alignOrientation.MaxTorque = math.huge
+            end
+            
+            local alignPosition = dragPart:FindFirstChild("AlignPosition")
+            if alignPosition then
+                alignPosition.MaxAxesForce = Vector3.new(math.huge, math.huge, math.huge)
+                alignPosition.MaxForce = math.huge
+                alignPosition.Responsiveness = 200
+            end
+        end
+    end
+    
+    if model.Name == "GrabParts" and Settings.Line.InvisibleLine then
+        CreateGrabLine:FireServer()
+    end
+end)
+
+local lineColors = {
+    Color3.new(1, 0, 0), Color3.new(1, 0, 0), Color3.new(1, 0, 0),
+    Color3.new(1, 0, 0), Color3.new(1, 0, 0), Color3.new(1, 0, 0),
+    Color3.new(1, 0, 0), Color3.new(1, 0, 0), Color3.new(1, 0, 0),
+    Color3.new(1, 0, 0)
+}
+
+function LineFeature.IsMobile()
+    if LocalPlayer.PlayerGui:FindFirstChild("ContextActionGui") then
+        return true
+    end
+    return false
+end
+
+local guiLine = Instance.new("ScreenGui")
+guiLine.Name = "FurtherExtendGUI"
+guiLine.ResetOnSpawn = false
+guiLine.Parent = LocalPlayer.PlayerGui
+
+local imageButton = Instance.new("ImageButton")
+imageButton.Name = "IncreaseButton"
+imageButton.Size = UDim2.new(0, 50, 0, 50)
+imageButton.Position = UDim2.new(0.5, 60, 0.5, -25)
+imageButton.BackgroundTransparency = 1
+imageButton.ImageTransparency = 0.2
+imageButton.Visible = false
+imageButton.ImageColor3 = Color3.fromRGB(142, 142, 142)
+imageButton.Parent = guiLine
+
+local imageLabel = Instance.new("ImageLabel")
+imageLabel.Size = UDim2.new(1, 0, 1, 0)
+imageLabel.Image = "rbxassetid://9603827111"
+imageLabel.BackgroundTransparency = 1
+imageLabel.Parent = imageButton
+
+local imageButtonDe = Instance.new("ImageButton")
+imageButtonDe.Name = "DecreaseButton"
+imageButtonDe.Size = UDim2.new(0, 50, 0, 50)
+imageButtonDe.Position = UDim2.new(0.5, -110, 0.5, -25)
+imageButtonDe.BackgroundTransparency = 1
+imageButtonDe.ImageTransparency = 0.2
+imageButtonDe.Visible = false
+imageButtonDe.ImageColor3 = Color3.fromRGB(142, 142, 142)
+imageButtonDe.Parent = guiLine
+
+local imageLabelDe = Instance.new("ImageLabel")
+imageLabelDe.Size = UDim2.new(1, 0, 1, 0)
+imageLabelDe.Image = "rbxassetid://9603826756"
+imageLabelDe.BackgroundTransparency = 1
+imageLabelDe.Parent = imageButtonDe
+
+function LineFeature.buttonClicked()
+    if senv and senv.distance then
+        senv.distance = (senv.distance or 0) + Settings.Line.IncreaseLineExtend
+        if senv.distance < minDistance then
+            senv.distance = minDistance
+        end
+    end
+end
+
+function LineFeature.buttonClickedDE()
+    if senv and senv.distance then
+        senv.distance = (senv.distance or 0) - Settings.Line.IncreaseLineExtend
+        if senv.distance < minDistance then
+            senv.distance = minDistance
+        end
+    end
+end
+
+function LineFeature.toggleButtonState(isExtended)
+    if isExtended then
+        imageButton.Visible = true
+        imageButton.Active = true
+        imageButtonDe.Visible = true
+        imageButtonDe.Active = true
+    else
+        imageButton.Visible = false
+        imageButton.Active = false
+        imageButtonDe.Visible = false
+        imageButtonDe.Active = false
+    end
+end
+
+imageButton.MouseButton1Click:Connect(LineFeature.buttonClicked)
+imageButtonDe.MouseButton1Click:Connect(LineFeature.buttonClickedDE)
+
+UserInputService.InputChanged:Connect(function(input, gameProcessed)
+    if not gameProcessed then
+        if input.UserInputType == Enum.UserInputType.MouseWheel then
+            if input.Position.Z > 0 then
+                LineFeature.buttonClicked()
+            elseif input.Position.Z < 0 then
+                LineFeature.buttonClickedDE()
+            end
+        end
+    end
+end)
+
+LocalPlayer:WaitForChild("IsHeld").Changed:Connect(function(isHolding)
+    if isHolding then
+        if LineFeature.IsMobile() then
+            local controlsGui = LocalPlayer.PlayerGui:FindFirstChild("ControlsGui")
+            if controlsGui then
+                local decreaseButton = controlsGui:FindFirstChild("DecreaseLineExtendButton")
+                local increaseButton = controlsGui:FindFirstChild("IncreaseLineExtendButton")
+                if decreaseButton then decreaseButton.Visible = false end
+                if increaseButton then increaseButton.Visible = false end
+            end
+            LineFeature.toggleButtonState(true)
+        end
+    else
+        if LineFeature.IsMobile() then
+            local controlsGui = LocalPlayer.PlayerGui:FindFirstChild("ControlsGui")
+            if controlsGui then
+                local decreaseButton = controlsGui:FindFirstChild("DecreaseLineExtendButton")
+                local increaseButton = controlsGui:FindFirstChild("IncreaseLineExtendButton")
+                if decreaseButton then decreaseButton.Visible = true end
+                if increaseButton then increaseButton.Visible = true end
+            end
+        end
+        LineFeature.toggleButtonState(false)
+    end
+end)
+
+local function updateRainbowLine()
+    spawn(function()
+        local hue = 0
+        while Settings.Line.RainbowLine do
+            hue = (hue + (Settings.Line.LineSpeed * 0.01)) % 1
+            local color = Color3.fromHSV(hue, 1, 1)
+            
+            for i = 1, #lineColors do
+                if i == 1 then
+                    lineColors[i] = ColorSequence.new(color)
+                else
+                    lineColors[i] = color
+                end
+            end
+            updateLineColorsEvent:FireServer(unpack(lineColors))
+            task.wait(0.05)
+        end
+    end)
+end
+
+local function updateFlashingLine()
+    spawn(function()
+        local visible = true
+        while Settings.Line.FlashingLine do
+            if visible then
+                for i = 1, #lineColors do
+                    if i == 1 then
+                        lineColors[i] = ColorSequence.new(Settings.Line.LineColorChangeValue)
+                    else
+                        lineColors[i] = Settings.Line.LineColorChangeValue
+                    end
+                end
+            else
+                for i = 1, #lineColors do
+                    if i == 1 then
+                        lineColors[i] = ColorSequence.new(Color3.new(0, 0, 0))
+                    else
+                        lineColors[i] = Color3.new(0, 0, 0)
+                    end
+                end
+            end
+            updateLineColorsEvent:FireServer(unpack(lineColors))
+            visible = not visible
+            task.wait(Settings.Line.StrobeSpeed)
+        end
+    end)
+end
+
+local function updateGradientLine()
+    spawn(function()
+        while Settings.Line
