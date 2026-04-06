@@ -1,0 +1,411 @@
+-- Tomato Hub - モバイル専用 開閉式GUI (LocalScript)
+
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local userInputService = game:GetService("UserInputService")
+local tweenService = game:GetService("TweenService")
+
+-- グローバル設定
+local settings = {
+    grabPower = 50,
+    isOpen = true  -- メニュー開いているか
+}
+
+-- ============ 起動時エフェクト ============
+local function showStartupEffect()
+    local startupText = Instance.new("TextLabel")
+    startupText.Size = UDim2.new(0, 500, 0, 100)
+    startupText.Position = UDim2.new(0.5, -250, 0.5, -50)
+    startupText.BackgroundTransparency = 1
+    startupText.Text = "tomato hub"
+    startupText.TextColor3 = Color3.new(0, 1, 0)
+    startupText.TextSize = 40
+    startupText.TextScaled = true
+    startupText.Font = Enum.Font.GothamBold
+    startupText.Parent = player.PlayerGui
+    
+    task.wait(1)
+    startupText.Text = "ロード中..."
+    task.wait(3)
+    startupText:Destroy()
+end
+
+-- ============ パワースライダー作成 ============
+local function createPowerSlider(parent, x, y, width, height, onValueChanged)
+    local sliderFrame = Instance.new("Frame")
+    sliderFrame.Size = UDim2.new(0, width, 0, height)
+    sliderFrame.Position = UDim2.new(0, x, 0, y)
+    sliderFrame.BackgroundColor3 = Color3.new(0.2, 0.2, 0.25)
+    sliderFrame.BackgroundTransparency = 0.5
+    sliderFrame.BorderSizePixel = 0
+    sliderFrame.Parent = parent
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = sliderFrame
+    
+    -- スライダーバー
+    local sliderBar = Instance.new("Frame")
+    sliderBar.Size = UDim2.new(0.8, 0, 0, 8)
+    sliderBar.Position = UDim2.new(0.1, 0, 0.5, -4)
+    sliderBar.BackgroundColor3 = Color3.new(0.3, 0.3, 0.35)
+    sliderBar.BorderSizePixel = 0
+    sliderBar.Parent = sliderFrame
+    
+    local barCorner = Instance.new("UICorner")
+    barCorner.CornerRadius = UDim.new(0, 4)
+    barCorner.Parent = sliderBar
+    
+    -- スライダーフィル
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Size = UDim2.new(settings.grabPower / 100, 0, 1, 0)
+    sliderFill.BackgroundColor3 = Color3.new(0, 1, 0)
+    sliderFill.BorderSizePixel = 0
+    sliderFill.Parent = sliderBar
+    
+    local fillCorner = Instance.new("UICorner")
+    fillCorner.CornerRadius = UDim.new(0, 4)
+    fillCorner.Parent = sliderFill
+    
+    -- スライダーノブ
+    local sliderKnob = Instance.new("Frame")
+    sliderKnob.Size = UDim2.new(0, 24, 0, 24)
+    sliderKnob.Position = UDim2.new(settings.grabPower / 100, -12, 0.5, -12)
+    sliderKnob.BackgroundColor3 = Color3.new(0, 1, 0)
+    sliderKnob.BorderSizePixel = 0
+    sliderKnob.Parent = sliderFrame
+    
+    local knobCorner = Instance.new("UICorner")
+    knobCorner.CornerRadius = UDim.new(1, 0)
+    knobCorner.Parent = sliderKnob
+    
+    -- パワー表示
+    local powerLabel = Instance.new("TextLabel")
+    powerLabel.Size = UDim2.new(0, 70, 0, 30)
+    powerLabel.Position = UDim2.new(1, -80, 0, -35)
+    powerLabel.BackgroundTransparency = 1
+    powerLabel.Text = settings.grabPower .. "%"
+    powerLabel.TextColor3 = Color3.new(0, 1, 0)
+    powerLabel.TextSize = 16
+    powerLabel.Font = Enum.Font.GothamBold
+    powerLabel.Parent = sliderFrame
+    
+    -- スライダー操作
+    local dragging = false
+    
+    local function updateSlider(input)
+        local relativeX = math.clamp((input.Position.X - sliderBar.AbsolutePosition.X) / sliderBar.AbsoluteSize.X, 0, 1)
+        settings.grabPower = math.floor(relativeX * 100)
+        settings.grabPower = math.clamp(settings.grabPower, 0, 100)
+        
+        sliderFill.Size = UDim2.new(settings.grabPower / 100, 0, 1, 0)
+        sliderKnob.Position = UDim2.new(settings.grabPower / 100, -12, 0.5, -12)
+        powerLabel.Text = settings.grabPower .. "%"
+        
+        if onValueChanged then
+            onValueChanged(settings.grabPower)
+        end
+    end
+    
+    sliderFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            updateSlider(input)
+        end
+    end)
+    
+    userInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.Touch then
+            updateSlider(input)
+        end
+    end)
+    
+    userInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    
+    return sliderFrame
+end
+
+-- ============ トグルボタン（開閉用） ============
+local function createToggleButton(parent, onToggle)
+    local toggleBtn = Instance.new("ImageButton")
+    toggleBtn.Size = UDim2.new(0, 60, 0, 60)
+    toggleBtn.Position = UDim2.new(0, 10, 1, -80)
+    toggleBtn.BackgroundColor3 = Color3.new(0.2, 0.4, 0.2)
+    toggleBtn.BackgroundTransparency = 0.2
+    toggleBtn.BorderSizePixel = 0
+    toggleBtn.Image = "rbxassetid://3926305904"  -- ハンバーガーメニューアイコン
+    toggleBtn.Parent = parent
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(1, 0)
+    btnCorner.Parent = toggleBtn
+    
+    -- 影効果
+    local shadow = Instance.new("ImageLabel")
+    shadow.Size = UDim2.new(1, 0, 1, 0)
+    shadow.Position = UDim2.new(0, 2, 0, 2)
+    shadow.BackgroundTransparency = 1
+    shadow.Image = "rbxassetid://3926305904"
+    shadow.ImageColor3 = Color3.new(0, 0, 0)
+    shadow.ImageTransparency = 0.5
+    shadow.ZIndex = 0
+    shadow.Parent = toggleBtn
+    
+    return toggleBtn
+end
+
+-- ============ メインGUI作成 ============
+local function createMobileGUI()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "TomatoHub"
+    screenGui.Parent = player.PlayerGui
+    screenGui.ResetOnSpawn = false
+    
+    -- メインメニューフレーム
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0, 350, 0, 500)
+    mainFrame.Position = UDim2.new(0.5, -175, 0.5, -250)
+    mainFrame.BackgroundColor3 = Color3.new(0.08, 0.08, 0.12)
+    mainFrame.BackgroundTransparency = 0.05
+    mainFrame.BorderSizePixel = 0
+    mainFrame.ClipsDescendants = true
+    mainFrame.Parent = screenGui
+    
+    local mainCorner = Instance.new("UICorner")
+    mainCorner.CornerRadius = UDim.new(0, 16)
+    mainCorner.Parent = mainFrame
+    
+    -- タイトルバー
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 60)
+    titleBar.BackgroundColor3 = Color3.new(0.2, 0.35, 0.2)
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = mainFrame
+    
+    local titleCorner = Instance.new("UICorner")
+    titleCorner.CornerRadius = UDim.new(0, 16)
+    titleCorner.Parent = titleBar
+    
+    -- タイトルテキスト
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -60, 1, 0)
+    title.Position = UDim2.new(0, 10, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "🍅 Tomato Hub"
+    title.TextColor3 = Color3.new(0, 1, 0)
+    title.TextSize = 24
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Font = Enum.Font.GothamBold
+    title.Parent = titleBar
+    
+    -- 閉じるボタン（×）
+    local closeButton = Instance.new("TextButton")
+    closeButton.Size = UDim2.new(0, 40, 0, 40)
+    closeButton.Position = UDim2.new(1, -50, 0, 10)
+    closeButton.BackgroundColor3 = Color3.new(0.6, 0.2, 0.2)
+    closeButton.BackgroundTransparency = 0.3
+    closeButton.Text = "✕"
+    closeButton.TextColor3 = Color3.new(1, 1, 1)
+    closeButton.TextSize = 24
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.BorderSizePixel = 0
+    closeButton.Parent = titleBar
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 10)
+    closeCorner.Parent = closeButton
+    
+    -- スクロールフレーム（コンテンツ）
+    local scrollingFrame = Instance.new("ScrollingFrame")
+    scrollingFrame.Size = UDim2.new(1, -20, 1, -80)
+    scrollingFrame.Position = UDim2.new(0, 10, 0, 70)
+    scrollingFrame.BackgroundTransparency = 1
+    scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollingFrame.ScrollBarThickness = 6
+    scrollingFrame.ScrollBarImageColor3 = Color3.new(0, 1, 0)
+    scrollingFrame.Parent = mainFrame
+    
+    local uiList = Instance.new("UIListLayout")
+    uiList.Padding = UDim.new(0, 12)
+    uiList.SortOrder = Enum.SortOrder.LayoutOrder
+    uiList.Parent = scrollingFrame
+    
+    -- ===== パワースライダーセクション =====
+    local powerSection = Instance.new("Frame")
+    powerSection.Size = UDim2.new(1, 0, 0, 100)
+    powerSection.BackgroundColor3 = Color3.new(0.12, 0.12, 0.16)
+    powerSection.BackgroundTransparency = 0.5
+    powerSection.BorderSizePixel = 0
+    powerSection.Parent = scrollingFrame
+    
+    local sectionCorner = Instance.new("UICorner")
+    sectionCorner.CornerRadius = UDim.new(0, 12)
+    sectionCorner.Parent = powerSection
+    
+    local sectionIcon = Instance.new("TextLabel")
+    sectionIcon.Size = UDim2.new(0, 40, 0, 40)
+    sectionIcon.Position = UDim2.new(0, 10, 0, 10)
+    sectionIcon.BackgroundTransparency = 1
+    sectionIcon.Text = "⚡"
+    sectionIcon.TextColor3 = Color3.new(1, 1, 1)
+    sectionIcon.TextSize = 28
+    sectionIcon.Font = Enum.Font.GothamBold
+    sectionIcon.Parent = powerSection
+    
+    local sectionTitle = Instance.new("TextLabel")
+    sectionTitle.Size = UDim2.new(1, -60, 0, 25)
+    sectionTitle.Position = UDim2.new(0, 55, 0, 10)
+    sectionTitle.BackgroundTransparency = 1
+    sectionTitle.Text = "投げるパワー"
+    sectionTitle.TextColor3 = Color3.new(0, 1, 0)
+    sectionTitle.TextSize = 18
+    sectionTitle.TextXAlignment = Enum.TextXAlignment.Left
+    sectionTitle.Font = Enum.Font.GothamSemibold
+    sectionTitle.Parent = powerSection
+    
+    local powerDesc = Instance.new("TextLabel")
+    powerDesc.Size = UDim2.new(1, -60, 0, 20)
+    powerDesc.Position = UDim2.new(0, 55, 0, 33)
+    powerDesc.BackgroundTransparency = 1
+    powerDesc.Text = "スライダーでパワーを調整"
+    powerDesc.TextColor3 = Color3.new(0.5, 0.5, 0.5)
+    powerDesc.TextSize = 12
+    powerDesc.TextXAlignment = Enum.TextXAlignment.Left
+    powerDesc.Font = Enum.Font.Gotham
+    powerDesc.Parent = powerSection
+    
+    createPowerSlider(powerSection, 10, 55, 330, 40, function(value)
+        print("パワー変更:", value)
+    end)
+    
+    -- ===== ボタンセクション =====
+    local buttons = {
+        {name = "🔴 掴み開始", color = Color3.new(0.2, 0.6, 0.2), action = "start"},
+        {name = "🟡 掴み停止", color = Color3.new(0.6, 0.5, 0.1), action = "stop"},
+        {name = "🎯 対象変更", color = Color3.new(0.2, 0.3, 0.6), action = "target"},
+        {name = "⚡ 高速モード", color = Color3.new(0.5, 0.2, 0.6), action = "fast"},
+        {name = "💾 設定保存", color = Color3.new(0.2, 0.5, 0.5), action = "save"}
+    }
+    
+    for _, btnData in ipairs(buttons) do
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, 0, 0, 55)
+        button.BackgroundColor3 = btnData.color
+        button.BackgroundTransparency = 0.4
+        button.Text = btnData.name
+        button.TextColor3 = Color3.new(1, 1, 1)
+        button.TextSize = 18
+        button.Font = Enum.Font.GothamSemibold
+        button.BorderSizePixel = 0
+        button.Parent = scrollingFrame
+        
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, 12)
+        btnCorner.Parent = button
+        
+        button.MouseButton1Click:Connect(function()
+            if btnData.action == "start" then
+                print("掴み開始 - パワー:", settings.grabPower)
+                -- RemoteEventでサーバーに送信
+            elseif btnData.action == "stop" then
+                print("掴み停止")
+            elseif btnData.action == "target" then
+                print("対象変更")
+            elseif btnData.action == "fast" then
+                print("高速モード有効")
+            elseif btnData.action == "save" then
+                print("設定保存 - パワー:", settings.grabPower)
+            end
+        end)
+    end
+    
+    -- 更新キャンバスサイズ
+    local function updateCanvasSize()
+        scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, uiList.AbsoluteContentSize.Y + 20)
+    end
+    
+    uiList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvasSize)
+    task.wait(0.1)
+    updateCanvasSize()
+    
+    -- ===== 開閉機能 =====
+    local toggleButton = createToggleButton(screenGui)
+    local isOpen = true
+    local menuPos = mainFrame.Position
+    local closedPos = UDim2.new(0.5, -175, 1.5, 0)  -- 画面外下
+    
+    -- トグルボタン押下
+    toggleButton.MouseButton1Click:Connect(function()
+        isOpen = not isOpen
+        
+        local targetPos = isOpen and menuPos or closedPos
+        local targetTransparency = isOpen and 0.05 or 1
+        
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local posTween = tweenService:Create(mainFrame, tweenInfo, {Position = targetPos})
+        local alphaTween = tweenService:Create(mainFrame, tweenInfo, {BackgroundTransparency = targetTransparency})
+        
+        posTween:Play()
+        alphaTween:Play()
+        
+        -- トグルボタンの見た目変更
+        if isOpen then
+            toggleButton.Image = "rbxassetid://3926305904"  -- ハンバーガー
+            toggleButton.BackgroundColor3 = Color3.new(0.2, 0.4, 0.2)
+        else
+            toggleButton.Image = "rbxassetid://3926305904"  -- 同じアイコン（回転させても良い）
+            toggleButton.BackgroundColor3 = Color3.new(0.4, 0.2, 0.2)
+        end
+    end)
+    
+    -- 閉じるボタン（×）でも閉じられる
+    closeButton.MouseButton1Click:Connect(function()
+        if isOpen then
+            toggleButton.MouseButton1Click:Fire()
+        end
+    end)
+    
+    -- ドラッグで移動できるように
+    local dragging = false
+    local dragStart = nil
+    local frameStart = nil
+    
+    titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            frameStart = mainFrame.Position
+        end
+    end)
+    
+    userInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.Touch then
+            local delta = input.Position - dragStart
+            local newX = frameStart.X.Offset + delta.X
+            local newY = frameStart.Y.Offset + delta.Y
+            mainFrame.Position = UDim2.new(0, newX, 0, newY)
+            menuPos = mainFrame.Position
+        end
+    end)
+    
+    userInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    
+    return screenGui
+end
+
+-- ============ メイン実行 ============
+local function main()
+    showStartupEffect()
+    task.wait(0.5)
+    createMobileGUI()
+end
+
+main()
